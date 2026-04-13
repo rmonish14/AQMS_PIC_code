@@ -33,6 +33,8 @@ static void delay_us(int us) {
     ;
 }
 
+static bool check_button_toggle(void);
+
 static void adc_init(void) {
 // Just use a tiny delay instead of polling SERCOM3_USART_WriteIsBusy
 // so we don't accidentally hang there if it faults.
@@ -1183,7 +1185,6 @@ static void run_aqi_page(int *saved_aqi, int *saved_target) {
 
   uint16_t txt_faint = 0x0000;
   tft_draw_string(35, 2, "LIVE.COIMBATORE", txt_faint, bg, 1);
-  tft_draw_string(53, 22, "AQI INDEX", txt_faint, bg, 1);
   tft_draw_string(47, 72, "US EPA STD.", txt_faint, bg, 1);
 
   int current_aqi = *saved_aqi;
@@ -1191,14 +1192,10 @@ static void run_aqi_page(int *saved_aqi, int *saved_target) {
   uint16_t last_color = 0x0000;
   uint8_t wave_t = 0;
   while (1) {
-    // ---- Check PA17 – if HIGH (debounced), jump to sensor page ----
-    if (PA17_IS_HIGH()) {
-      delay_ms(50); // 50ms debounce
-      if (PA17_IS_HIGH()) {
-        *saved_aqi = current_aqi;
-        *saved_target = target_aqi;
-        return;
-      }
+    if (check_button_toggle()) {
+      *saved_aqi = current_aqi;
+      *saved_target = target_aqi;
+      return;
     }
 
     uint16_t active_color = get_aqi_color(current_aqi);
@@ -1369,6 +1366,23 @@ static void update_card_value(int x, int y, const char *val, const char *unit) {
   tft_draw_string(cx + (val_len * 12), y + 14, unit, unit_fg, card_bg, 1);
 }
 
+// Standard Edge Detection (Toggle Button logic)
+static bool check_button_toggle(void) {
+  static bool btn_prev = false;
+  bool btn_curr = PA17_IS_HIGH();
+
+  if (btn_curr && !btn_prev) {
+    delay_ms(50); // debounce
+    if (PA17_IS_HIGH()) {
+      btn_prev = true;
+      return true; // Button was just pressed!
+    }
+  } else if (!btn_curr) {
+    btn_prev = false;
+  }
+  return false;
+}
+
 static void run_sensor_page(void) {
   uint16_t bg = 0x4516; // Teal/Cyan Main Background
   tft_fill_screen(bg);
@@ -1386,12 +1400,8 @@ static void run_sensor_page(void) {
   uint8_t disp_ticks = 0;
 
   while (1) {
-    // ---- Check PA17 – if LOW (debounced), return to AQI page ----
-    if (!PA17_IS_HIGH()) {
-      delay_ms(50); // 50ms debounce
-      if (!PA17_IS_HIGH()) {
-        return;
-      }
+    if (check_button_toggle()) {
+      return;
     }
 
     // ---- Update sensor values continuously ----
@@ -1456,14 +1466,21 @@ static void run_display(void) {
   // Page 1 – Logo splash (one-shot, untouched)
   draw_logo_page();
 
-  // Pages 2 & 3: PA17 Switch toggled.
+  int count = 0; // State variable: 0 = AQI, 1 = Sensor
   int aqi_cur = 0;
   int aqi_target = 42;
+
   while (1) {
-    if (!PA17_IS_HIGH()) {
-      run_aqi_page(&aqi_cur, &aqi_target); // Stays until HIGH
-    } else {
-      run_sensor_page(); // Stays until LOW
+    if (count == 0) {
+      run_aqi_page(&aqi_cur, &aqi_target);
+      count = 1;
+    } else if (count == 1) {
+      run_sensor_page();
+      count++;
+    }
+
+    if (count >= 2) {
+      count = 0; // Reset the count
     }
   }
 }
