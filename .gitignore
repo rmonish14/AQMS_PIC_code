@@ -1,0 +1,18 @@
+# MPLAB X build output — no need to track compiled binaries
+tftdisplay_secure.X/build/
+tftdisplay_secure.X/dist/
+tftdisplay_secure.X/.generated_files/
+
+# MPLAB X private/local settings (machine-specific paths)
+tftdisplay_secure.X/nbproject/private/
+
+# XC32 compiler object/dependency files
+*.o
+*.d
+*.elf
+*.hex
+*.map
+
+# Windows
+Thumbs.db
+desktop.ini

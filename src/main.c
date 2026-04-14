@@ -23,6 +23,10 @@
 #include <stdio.h>
 #include <string.h>
 
+/* ---- WiFi + MQTT (ESP-01S via SERCOM5 PB16/PB17) ---- */
+#include "esp8266_at.c"   /* unity-build: same pattern as initialization.c uses for SERCOM3 */
+#include "wifi_mqtt.c"
+
 // TrustZone Native Register Aliases (using standard addressing)
 
 // PA17 button helper – reads bit 17 of PORT GROUP[0] IN register (Secure alias)
@@ -1283,7 +1287,7 @@ static void run_aqi_page(int *saved_aqi, int *saved_target) {
       tft_draw_string(80 - (w * 12) / 2, 102, label, active_color, bg, 2);
     }
 
-    // ---- Read sensors every loop tick â€“ continuous serial + AQI update ----
+    // ---- Read sensors every loop tick – continuous serial + AQI update ----
     {
       float o3, co, nh3, dust, co2;
       read_all_sensors(&o3, &co, &nh3, &dust, &co2);
@@ -1303,13 +1307,25 @@ static void run_aqi_page(int *saved_aqi, int *saved_target) {
         new_aqi = 0;
       target_aqi = new_aqi;
 
-      // UART â€“ sent every loop (as fast as ADC sampling allows)
+      // UART – sent every loop (as fast as ADC sampling allows)
       char tbuf[200];
       sprintf(tbuf, "O3:%.1f CO:%.1f NH3:%.1f Dust:%.1f CO2:%.1f AQI:%d\r\n",
               o3, co, nh3, dust, co2, target_aqi);
       while (SERCOM3_USART_WriteIsBusy())
         ;
       SERCOM3_USART_Write((uint8_t *)tbuf, strlen(tbuf));
+
+      // ---- WiFi MQTT publish (throttled — every WIFI_PUBLISH_EVERY loops) ----
+      static uint32_t wifi_aqi_tick = 0;
+      if (++wifi_aqi_tick >= WIFI_PUBLISH_EVERY)
+      {
+        wifi_aqi_tick = 0;
+        /* Reuse tbuf but strip the trailing \r\n for the MQTT payload */
+        char mqtt_buf[200];
+        sprintf(mqtt_buf, "O3:%.1f CO:%.1f NH3:%.1f Dust:%.1f CO2:%.1f AQI:%d",
+                o3, co, nh3, dust, co2, target_aqi);
+        wifi_mqtt_publish(mqtt_buf);   /* non-fatal if WiFi is not ready */
+      }
     }
   }
 }
@@ -1455,6 +1471,20 @@ static void run_sensor_page(void) {
       while (SERCOM3_USART_WriteIsBusy())
         ;
       SERCOM3_USART_Write((uint8_t *)tbuf, strlen(tbuf));
+
+      // ---- WiFi MQTT publish (throttled — every WIFI_PUBLISH_EVERY loops) ----
+      // Payload is JSON so backend handler.js JSON.parse() succeeds.
+      // Fields match what handler.js reads: pm25, co2, o3, co, nh3
+      static uint32_t wifi_sensor_tick = 0;
+      if (++wifi_sensor_tick >= WIFI_PUBLISH_EVERY)
+      {
+        wifi_sensor_tick = 0;
+        char mqtt_buf[160];
+        sprintf(mqtt_buf,
+                "{\"o3\":%.2f,\"co\":%.2f,\"nh3\":%.2f,\"pm25\":%.2f,\"co2\":%.2f}",
+                o3, co, nh3, dust, co2);
+        wifi_mqtt_publish(mqtt_buf);
+      }
     }
   }
 }
@@ -1498,6 +1528,12 @@ int main(void) {
   while (SERCOM3_USART_WriteIsBusy())
     ;
   SERCOM3_USART_Write((uint8_t *)hello, strlen(hello));
+
+  // ---- WiFi + MQTT init (ESP-01S on SERCOM5, PB16/PB17) ----
+  // wifi_mqtt_init() blocks while joining WiFi (~10-20 s).
+  // If the module is absent or credentials are wrong, it returns false
+  // and the rest of the firmware continues normally without WiFi.
+  wifi_mqtt_init();
 
   // PA03 is the Dust LED. Set it to OUTPUT.
   PIN_OUTPUT_ENABLE(3);
