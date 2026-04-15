@@ -1189,7 +1189,7 @@ static void run_aqi_page(int *saved_aqi, int *saved_target) {
 
   uint16_t txt_faint = 0x0000;
   tft_draw_string(35, 2, "LIVE.COIMBATORE", txt_faint, bg, 1);
-  tft_draw_string(47, 72, "US EPA STD.", txt_faint, bg, 1);
+  tft_draw_string(47, 72, "US EPA \STD.", txt_faint, bg, 1);
 
   int current_aqi = *saved_aqi;
   int target_aqi = *saved_target;

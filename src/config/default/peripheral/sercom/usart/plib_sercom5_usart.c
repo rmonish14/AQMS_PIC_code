@@ -1,8 +1,8 @@
 /*******************************************************************************
   SERCOM5 USART PLIB – ESP-01S WiFi Module Interface
 
-  PB16 = SERCOM5 PAD0 (TX → ESP-01S RX) via MUX D
-  PB17 = SERCOM5 PAD1 (RX ← ESP-01S TX) via MUX D
+  PA22 = SERCOM5 PAD0 (TX → ESP-01S RX) via MUX D
+  PA23 = SERCOM5 PAD1 (RX ← ESP-01S TX) via MUX D
   Baud: 115200 @ GCLK0 = 48 MHz
   8N1, No parity, LSB first
 
@@ -32,14 +32,14 @@ static void _s5_delay_ms(uint32_t ms)
    -------------------------------------------------------------------------- */
 void SERCOM5_USART_Initialize(void)
 {
-    /* --- PORT: PB16 = PAD0 (TX), PB17 = PAD1 (RX) — MUX D (value 3) ---
-       PB16 / PB17 share PMUX[8]  (pin index / 2 = 16/2 = 8)            */
-    PORT_SEC_REGS->GROUP[1].PORT_PMUX[8] =
-        PORT_PMUX_PMUXE(3) |   /* PB16 → SERCOM5 PAD0 (TX) */
-        PORT_PMUX_PMUXO(3);    /* PB17 → SERCOM5 PAD1 (RX) */
+    /* --- PORT: PA22 = PAD0 (TX), PA23 = PAD1 (RX) — MUX D (value 3) ---
+       PA22 / PA23 share PMUX[11] (pin index / 2 = 22/2 = 11)           */
+    PORT_SEC_REGS->GROUP[0].PORT_PMUX[11] =
+        PORT_PMUX_PMUXE(3) |   /* PA22 → SERCOM5 PAD0 (TX) */
+        PORT_PMUX_PMUXO(3);    /* PA23 → SERCOM5 PAD1 (RX) */
 
-    PORT_SEC_REGS->GROUP[1].PORT_PINCFG[16] = PORT_PINCFG_PMUXEN_Msk;
-    PORT_SEC_REGS->GROUP[1].PORT_PINCFG[17] = PORT_PINCFG_PMUXEN_Msk;
+    PORT_SEC_REGS->GROUP[0].PORT_PINCFG[22] = PORT_PINCFG_PMUXEN_Msk;
+    PORT_SEC_REGS->GROUP[0].PORT_PINCFG[23] = PORT_PINCFG_PMUXEN_Msk;
 
     /* --- MCLK: enable APB clock for SERCOM5 (bit 6 in APBCMASK) ---
        Pattern confirmed from SERCOM3 (bit 4).  SERCOM4 = bit 5, SERCOM5 = bit 6 */
@@ -64,18 +64,16 @@ void SERCOM5_USART_Initialize(void)
     while (SERCOM5_REGS->USART_INT.SERCOM_SYNCBUSY)
         ;
 
-    /* --- BAUD: 115200 @ 48 MHz, 16x oversampling ---
-       BAUD = 65536 * (1 - 16 * 115200 / 48000000)
-            = 65536 * 0.96160
-            = 63019                                                      */
-    SERCOM5_REGS->USART_INT.SERCOM_BAUD = (uint16_t)63019U;
+    /* --- BAUD: 9600 @ 48 MHz, 16x oversampling ---
+       BAUD = 65536 * (1 - 16 * 9600 / 48000000) = 65326U               */
+    SERCOM5_REGS->USART_INT.SERCOM_BAUD = (uint16_t)65326U;
 
     /* --- CTRLA: internal clock, LSB first, TX=PAD0, RX=PAD1, async, enable --- */
     SERCOM5_REGS->USART_INT.SERCOM_CTRLA =
         SERCOM_USART_INT_CTRLA_MODE(1)   |  /* USART with internal clock */
         SERCOM_USART_INT_CTRLA_DORD_Msk  |  /* LSB first                 */
-        SERCOM_USART_INT_CTRLA_TXPO(0)   |  /* TX on PAD0 (PB16)         */
-        SERCOM_USART_INT_CTRLA_RXPO(1)   |  /* RX on PAD1 (PB17)         */
+        SERCOM_USART_INT_CTRLA_TXPO(0)   |  /* TX on PAD0 (PA22)         */
+        SERCOM_USART_INT_CTRLA_RXPO(1)   |  /* RX on PAD1 (PA23)         */
         SERCOM_USART_INT_CTRLA_ENABLE_Msk;
 
     while (SERCOM5_REGS->USART_INT.SERCOM_SYNCBUSY)
